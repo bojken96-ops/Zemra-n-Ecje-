@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="sq">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Lutja Ime</title>
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600&family=Lato:wght@300;400&display=swap" rel="stylesheet">
+    <style>
+        :root { --primary: #1a2744; --accent: #d4af37; --bg: #f4f7f6; --white: #ffffff; }
+        body { font-family: 'Lato', sans-serif; background: var(--bg); margin: 0; color: #333; padding-bottom: 30px; }
+        header { background: var(--primary); color: white; padding: 30px 20px; text-align: center; border-radius: 0 0 25px 25px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+        header h1 { font-family: 'Cormorant Garamond', serif; margin: 0; font-size: 1.8rem; }
+        #dateText { color: var(--accent); margin-top: 5px; font-size: 1.1rem; font-weight: 300; }
+        .container { width: 90%; max-width: 500px; margin: -20px auto 20px; }
+        .card { background: white; border-radius: 15px; padding: 20px; box-shadow: 0 8px 20px rgba(0,0,0,0.05); margin-bottom: 20px; border-top: 3px solid var(--accent); }
+        h2 { font-size: 1rem; color: var(--primary); border-bottom: 1px solid #eee; padding-bottom: 10px; margin-bottom: 15px; text-transform: uppercase; letter-spacing: 1px; }
+        textarea { width: 100%; border: 1px solid #ddd; border-radius: 10px; padding: 12px; font-size: 1rem; min-height: 150px; box-sizing: border-box; font-family: 'Lato', sans-serif; line-height: 1.5; }
+        .btn-link { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 14px; background: #f8f9fa; border: 1px solid #eee; border-radius: 10px; text-decoration: none; color: var(--primary); font-weight: bold; margin-bottom: 10px; cursor: pointer; width: 100%; font-size: 0.95rem; transition: all 0.2s; border: 1px solid #d1dbff; }
+        .btn-link:active { background: #e9ecef; transform: scale(0.98); }
+        .btn-primary { background: var(--primary); color: white; border: none; padding: 16px; width: 100%; border-radius: 10px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 15px rgba(26,39,68,0.3); font-size: 1rem; }
+        .history-item { font-size: 0.85rem; padding: 15px; border-left: 4px solid var(--accent); background: #fff; margin-bottom: 15px; border-radius: 0 10px 10px 0; }
+        audio { width: 100%; height: 40px; margin-top: 5px; }
+    </style>
+</head>
+<body>
+<header>
+    <h1>Lutja Ime</h1>
+    <div id="dateText">Duke ngarkuar...</div>
+</header>
+<div class="container">
+    <div class="card">
+        <h2>Burimet e Ditës</h2>
+        <button onclick="openBose()" class="btn-link" style="background: #eef2ff;">
+            🙏 Lutja e Ditës (Bose Shqip)
+        </button>
+        <a href="https://www.getupandwalk.org/" target="_blank" class="btn-link">
+            🚶‍♂️ Getup and Walk
+        </a>
+    </div>
+    <div class="card">
+        <h2>Melodi Meditimi</h2>
+        <audio controls loop>
+            <source src="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3" type="audio/mpeg">
+        </audio>
+    </div>
+    <div class="card">
+        <h2>Shënimet e Mia</h2>
+        <textarea id="dailyNote" placeholder="Shkruaj këtu..."></textarea>
+    </div>
+    <button onclick="saveNote()" class="btn-primary">Ruaj Shënimin</button>
+    <div id="history"></div>
+</div>
+<script>
+    const daysSq = ["E diel", "E hënë", "E martë", "E mërkurë", "E enjte", "E premte", "E shtunë"];
+    const monthsSq = ["Janar", "Shkurt", "Mars", "Prill", "Maj", "Qershor", "Korrik", "Gusht", "Shtator", "Tetor", "Nëntor", "Dhjetor"];
+    function init() {
+        const d = new Date();
+        document.getElementById('dateText').innerText = `${daysSq[d.getDay()]}, ${d.getDate()} ${monthsSq[d.getMonth()]}`;
+        loadTodayNote();
+        showHistory();
+    }
+    function openBose() {
+        const url = "https://www.monasterodibose.it/preghiera/preghiera-del-giorno";
+        window.open(`https://translate.google.com/translate?sl=it&tl=sq&u=${encodeURIComponent(url)}`, '_blank');
+    }
+    function getStorageKey() {
+        const d = new Date();
+        return `lutja_${d.getFullYear()}_${d.getMonth()+1}_${d.getDate()}`;
+    }
+    function saveNote() {
+        const key = getStorageKey();
+        const text = document.getElementById('dailyNote').value;
+        const data = JSON.parse(localStorage.getItem('myAppPrayers') || '{}');
+        data[key] = { date: document.getElementById('dateText').innerText, content: text, timestamp: new Date().getTime() };
+        localStorage.setItem('myAppPrayers', JSON.stringify(data));
+        alert("U ruajt!");
+        showHistory();
+    }
+    function loadTodayNote() {
+        const data = JSON.parse(localStorage.getItem('myAppPrayers') || '{}');
+        const key = getStorageKey();
+        if(data[key]) document.getElementById('dailyNote').value = data[key].content;
+    }
+    function showHistory() {
+        const data = JSON.parse(localStorage.getItem('myAppPrayers') || '{}');
+        const historyDiv = document.getElementById('history');
+        const keys = Object.keys(data).sort((a, b) => (data[b].timestamp || 0) - (data[a].timestamp || 0));
+        let html = '<h2 style="text-align:center; margin-top:30px;">Kujtimet</h2>';
+        keys.forEach(key => {
+            if(key !== getStorageKey()) {
+                html += `<div class="card history-item"><strong>${data[key].date}</strong><br><p>${data[key].content}</p></div>`;
+            }
+        });
+        historyDiv.innerHTML = html;
+    }
+    window.onload = init;
+</script>
+</body>
+</html>

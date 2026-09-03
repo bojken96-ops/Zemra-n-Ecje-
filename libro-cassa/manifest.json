@@ -1,0 +1,12 @@
+{
+  "name": "Libro Cassa Parrocchiale",
+  "short_name": "Libro Cassa",
+  "description": "Registro entrate e uscite per la gestione della cassa parrocchiale",
+  "start_url": "index.html",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f3f5f8",
+  "theme_color": "#132a4c",
+  "lang": "it",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}

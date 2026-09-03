@@ -518,6 +518,24 @@ const DEFAULT_CATEGORIES = {
 const MONTHS = ["Gen","Feb","Mar","Apr","Mag","Giu","Lug","Ago","Set","Ott","Nov","Dic"];
 const MONTHS_FULL = ["Gennaio","Febbraio","Marzo","Aprile","Maggio","Giugno","Luglio","Agosto","Settembre","Ottobre","Novembre","Dicembre"];
 
+/* Se impostata, l'app si sincronizza automaticamente per tutti, senza che
+   ogni telefono debba configurare nulla. Lasciare null per uso solo locale
+   (o configurazione manuale dalla schermata Impostazioni). */
+const EMBEDDED_SYNC = null;
+/* Esempio:
+const EMBEDDED_SYNC = {
+  roomCode: "parrocchia-santamaria",
+  firebaseConfig: {
+    apiKey: "...",
+    authDomain: "...",
+    projectId: "...",
+    storageBucket: "...",
+    messagingSenderId: "...",
+    appId: "..."
+  }
+};
+*/
+
 let state = {
   currentYear: null,
   years: {},        // { "2026": { openingBalance: 0, transactions: [...] } }
@@ -946,6 +964,7 @@ let syncUnsubscribe = null;
 let applyingRemote = false;
 
 function loadSyncConfig(){
+  if(EMBEDDED_SYNC){ syncConfig = EMBEDDED_SYNC; return; }
   try{
     const raw = localStorage.getItem('libroCassa_sync');
     if(raw) syncConfig = JSON.parse(raw);
@@ -979,6 +998,7 @@ function renderSyncUI(){
     setup.classList.add('hidden');
     active.classList.remove('hidden');
     document.getElementById('syncRoomLabel').textContent = syncConfig.roomCode;
+    document.getElementById('syncDisconnectBtn').classList.toggle('hidden', !!EMBEDDED_SYNC);
   }else{
     setup.classList.remove('hidden');
     active.classList.add('hidden');

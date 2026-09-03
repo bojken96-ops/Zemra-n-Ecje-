@@ -265,6 +265,18 @@
   }
   .toast.show{opacity:1; transform:translateX(-50%) translateY(-6px);}
 
+  /* ---------- Sync ---------- */
+  .sync-badge{display:inline-flex; align-items:center; gap:6px; padding:5px 12px; border-radius:20px; font-size:0.72rem; font-weight:700; flex-shrink:0;}
+  .sync-badge.off{background:#eef0f4; color:var(--text-muted);}
+  .sync-badge.on{background:var(--green-bg); color:var(--green);}
+  .sync-badge.error{background:var(--red-bg); color:var(--red);}
+  .sync-dot{width:7px; height:7px; border-radius:50%; background:currentColor;}
+  #syncConfigInput{
+    width:100%; min-height:100px; padding:12px; border-radius:var(--radius-sm); border:1px solid var(--border);
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:0.76rem; background:#fbfbfd; resize:vertical;
+  }
+  .sync-help{font-size:0.76rem; color:var(--text-muted); margin:-4px 0 14px; line-height:1.4;}
+
   @media print{
     .topbar, .bottom-nav, .fab, .quick-actions, .filter-row, #view-home, #view-movimenti, #view-impostazioni{display:none !important;}
     body{background:#fff;}
@@ -353,6 +365,32 @@
         </div>
         <button class="btn btn-outline" id="saveOpeningBtn">Salva saldo iniziale</button>
         <div class="btn-row"><button class="btn btn-primary" id="newYearBtn">+ Nuovo anno contabile</button></div>
+      </div>
+
+      <div class="section-title">Sincronizzazione tra più telefoni</div>
+      <div class="card">
+        <div class="settings-item">
+          <div><div class="t">Stato</div><div class="d" id="syncStatusText">Non configurata — i dati restano solo su questo telefono</div></div>
+          <span class="sync-badge off" id="syncBadge"><span class="sync-dot"></span><span id="syncBadgeLabel">Offline</span></span>
+        </div>
+        <div id="syncSetupBlock">
+          <p class="sync-help">Per far vedere gli stessi movimenti a più persone (es. parroco, segretario) serve un database online gratuito (Firebase di Google). Guida rapida disponibile su richiesta.</p>
+          <div class="field">
+            <label>Codice condiviso (uguale su tutti i telefoni)</label>
+            <input type="text" id="syncRoomCode" placeholder="es. parrocchia-santamaria">
+          </div>
+          <div class="field">
+            <label>Configurazione Firebase</label>
+            <textarea id="syncConfigInput" placeholder='Incolla qui il blocco firebaseConfig copiato dalla console Firebase'></textarea>
+          </div>
+          <button class="btn btn-primary" id="syncConnectBtn">Attiva sincronizzazione</button>
+        </div>
+        <div id="syncActiveBlock" class="hidden">
+          <div class="settings-item">
+            <div><div class="t">Codice condiviso</div><div class="d" id="syncRoomLabel"></div></div>
+          </div>
+          <button class="btn btn-outline btn-sm" id="syncDisconnectBtn">Disattiva sincronizzazione</button>
+        </div>
       </div>
 
       <div class="section-title">Categorie</div>
@@ -469,6 +507,8 @@
 
 <div class="toast" id="toast"></div>
 
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
 <script>
 /* ===================== STATE ===================== */
 const DEFAULT_CATEGORIES = {
@@ -509,6 +549,10 @@ function loadState(){
   saveState();
 }
 function saveState(){
+  saveLocalOnly();
+  pushCloudIfEnabled();
+}
+function saveLocalOnly(){
   localStorage.setItem('libroCassa_data', JSON.stringify(state));
 }
 function currentYearData(){
@@ -657,6 +701,7 @@ function renderSettings(){
   document.getElementById('setYearLabel').textContent = state.currentYear;
   document.getElementById('openingBalanceInput').value = currentYearData().openingBalance;
   renderCategoryManager();
+  renderSyncUI();
 }
 function renderCategoryManager(){
   const list = state.categories[activeCatTab];
@@ -893,6 +938,119 @@ document.getElementById('importJsonFile').addEventListener('change', e => {
   e.target.value = '';
 });
 
+/* ===================== CLOUD SYNC (Firebase) ===================== */
+let syncConfig = null;      // { roomCode, firebaseConfig }
+let syncDb = null;
+let syncDocRef = null;
+let syncUnsubscribe = null;
+let applyingRemote = false;
+
+function loadSyncConfig(){
+  try{
+    const raw = localStorage.getItem('libroCassa_sync');
+    if(raw) syncConfig = JSON.parse(raw);
+  }catch(e){ syncConfig = null; }
+}
+function saveSyncConfigToStorage(){
+  if(syncConfig) localStorage.setItem('libroCassa_sync', JSON.stringify(syncConfig));
+  else localStorage.removeItem('libroCassa_sync');
+}
+function parseFirebaseSnippet(text){
+  const cfg = {};
+  const re = /(\w+)\s*:\s*"([^"]*)"/g;
+  let m;
+  while((m = re.exec(text))){ cfg[m[1]] = m[2]; }
+  return cfg;
+}
+function setSyncStatus(mode, text){
+  const badge = document.getElementById('syncBadge');
+  const label = document.getElementById('syncBadgeLabel');
+  const statusText = document.getElementById('syncStatusText');
+  if(!badge) return;
+  badge.className = 'sync-badge ' + mode;
+  label.textContent = mode === 'on' ? 'Online' : (mode === 'error' ? 'Errore' : 'Offline');
+  if(text) statusText.textContent = text;
+}
+function renderSyncUI(){
+  const setup = document.getElementById('syncSetupBlock');
+  const active = document.getElementById('syncActiveBlock');
+  if(!setup) return;
+  if(syncConfig && syncConfig.firebaseConfig){
+    setup.classList.add('hidden');
+    active.classList.remove('hidden');
+    document.getElementById('syncRoomLabel').textContent = syncConfig.roomCode;
+  }else{
+    setup.classList.remove('hidden');
+    active.classList.add('hidden');
+    setSyncStatus('off', 'Non configurata — i dati restano solo su questo telefono');
+  }
+}
+async function initSyncConnection(){
+  if(!syncConfig || typeof firebase === 'undefined'){
+    setSyncStatus('error', 'Impossibile caricare la libreria di sincronizzazione (verifica la connessione internet)');
+    return;
+  }
+  try{
+    if(!firebase.apps.length) firebase.initializeApp(syncConfig.firebaseConfig);
+    syncDb = firebase.firestore();
+    try{ await syncDb.enablePersistence({ synchronizeTabs: true }); }catch(e){}
+    syncDocRef = syncDb.collection('libroCassa').doc(syncConfig.roomCode);
+    const snap = await syncDocRef.get();
+    if(snap.exists && snap.data() && snap.data().years){
+      applyingRemote = true;
+      state = snap.data();
+      if(!state.categories) state.categories = DEFAULT_CATEGORIES;
+      saveLocalOnly();
+      applyingRemote = false;
+      refreshAll();
+    }else{
+      await syncDocRef.set(state);
+    }
+    if(syncUnsubscribe) syncUnsubscribe();
+    syncUnsubscribe = syncDocRef.onSnapshot(doc => {
+      if(!doc.exists) return;
+      const remote = doc.data();
+      if(!remote || !remote.years) return;
+      applyingRemote = true;
+      state = remote;
+      if(!state.categories) state.categories = DEFAULT_CATEGORIES;
+      if(!state.years[state.currentYear]) state.currentYear = Math.max(...Object.keys(state.years).map(Number));
+      saveLocalOnly();
+      refreshAll();
+      applyingRemote = false;
+    }, err => setSyncStatus('error', 'Errore di connessione: ' + err.message));
+    setSyncStatus('on', 'Sincronizzata in tempo reale con il codice "' + syncConfig.roomCode + '"');
+  }catch(err){
+    setSyncStatus('error', 'Errore: ' + err.message);
+  }
+}
+function pushCloudIfEnabled(){
+  if(applyingRemote || !syncDocRef) return;
+  syncDocRef.set(state).catch(err => setSyncStatus('error', 'Errore invio dati: ' + err.message));
+}
+document.getElementById('syncConnectBtn').addEventListener('click', async () => {
+  const room = document.getElementById('syncRoomCode').value.trim();
+  const raw = document.getElementById('syncConfigInput').value.trim();
+  if(!room){ showToast('Inserisci un codice condiviso'); return; }
+  const cfg = parseFirebaseSnippet(raw);
+  if(!cfg.apiKey || !cfg.projectId){ showToast('Configurazione Firebase non valida o incompleta'); return; }
+  syncConfig = { roomCode: room, firebaseConfig: cfg };
+  saveSyncConfigToStorage();
+  renderSyncUI();
+  setSyncStatus('off', 'Connessione in corso…');
+  await initSyncConnection();
+});
+document.getElementById('syncDisconnectBtn').addEventListener('click', () => {
+  if(!confirm('Disattivare la sincronizzazione? Da ora i dati resteranno solo su questo telefono.')) return;
+  if(syncUnsubscribe) syncUnsubscribe();
+  syncUnsubscribe = null;
+  syncDocRef = null;
+  syncConfig = null;
+  saveSyncConfigToStorage();
+  renderSyncUI();
+  showToast('Sincronizzazione disattivata');
+});
+
 /* ===================== TOAST ===================== */
 let toastTimer;
 function showToast(msg){
@@ -912,6 +1070,9 @@ function refreshAll(){
 function init(){
   loadState();
   refreshAll();
+  loadSyncConfig();
+  renderSyncUI();
+  if(syncConfig) initSyncConnection();
   if('serviceWorker' in navigator){
     navigator.serviceWorker.register('sw.js').catch(()=>{});
   }

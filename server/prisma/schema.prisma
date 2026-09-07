@@ -3,13 +3,15 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
-// SQLite has no native enum support in Prisma, so Role/TxType/Currency/Method/
-// BudgetStatus/AuditAction are plain strings validated at the application layer
-// (see src/lib/types.ts and the zod schemas in each route).
+// Role/TxType/Currency/Method/BudgetStatus/AuditAction are plain strings
+// (not native Prisma enums) validated at the application layer instead
+// (see src/lib/types.ts and the zod schemas in each route). This keeps the
+// schema portable between Postgres (production) and SQLite (local dev
+// without Docker), since SQLite has no native enum support.
 
 model Parish {
   id            String   @id @default(uuid())

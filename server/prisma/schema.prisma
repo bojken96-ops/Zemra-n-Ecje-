@@ -1,0 +1,171 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Role/TxType/Currency/Method/BudgetStatus/AuditAction are plain strings
+// (not native Prisma enums) validated at the application layer instead
+// (see src/lib/types.ts and the zod schemas in each route). This keeps the
+// schema portable between Postgres (production) and SQLite (local dev
+// without Docker), since SQLite has no native enum support.
+
+model Parish {
+  id            String   @id @default(uuid())
+  name          String
+  address       String?
+  taxId         String?
+  currency      String   @default("EUR")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  users          User[]
+  categories     Category[]
+  transactions   Transaction[]
+  budgets        Budget[]
+  exchangeRates  ExchangeRate[]
+  auditLogs      AuditLog[]
+}
+
+model User {
+  id                String    @id @default(uuid())
+  email             String    @unique
+  passwordHash      String?
+  googleId          String?   @unique
+  name              String
+  role              String    @default("VIEWER")
+  parishId          String
+  parish            Parish    @relation(fields: [parishId], references: [id])
+  emailVerified     Boolean   @default(false)
+  active            Boolean   @default(true)
+  verifyToken       String?   @unique
+  verifyTokenExpiry DateTime?
+  resetToken        String?   @unique
+  resetTokenExpiry  DateTime?
+  refreshTokenHash  String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  transactions Transaction[] @relation("TransactionCreatedBy")
+  budgets      Budget[]      @relation("BudgetCreatedBy")
+  attachments  Attachment[]  @relation("AttachmentUploadedBy")
+  exchangeRates ExchangeRate[] @relation("ExchangeRateCreatedBy")
+  auditLogs    AuditLog[]
+}
+
+model Category {
+  id             String   @id @default(uuid())
+  parishId       String
+  parish         Parish   @relation(fields: [parishId], references: [id])
+  type           String
+  name           String
+  translationKey String?
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+
+  transactions Transaction[]
+  budgets      Budget[]
+
+  @@index([parishId, type])
+}
+
+model Transaction {
+  id                String    @id @default(uuid())
+  parishId          String
+  parish            Parish    @relation(fields: [parishId], references: [id])
+  type              String
+  date              DateTime
+  description       String
+  categoryId        String
+  category          Category  @relation(fields: [categoryId], references: [id])
+  amount            Float
+  currency          String
+  method            String
+  budgetId          String?
+  budget            Budget?   @relation(fields: [budgetId], references: [id])
+  notes             String?
+  exchangeRateUsed  Float?
+  createdById       String
+  createdBy         User      @relation("TransactionCreatedBy", fields: [createdById], references: [id])
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  deletedAt         DateTime?
+  deletedById       String?
+
+  attachments Attachment[]
+
+  @@index([parishId, date])
+  @@index([parishId, type])
+  @@index([parishId, method])
+  @@index([parishId, currency])
+}
+
+model Budget {
+  id             String       @id @default(uuid())
+  parishId       String
+  parish         Parish       @relation(fields: [parishId], references: [id])
+  number         String
+  date           DateTime
+  title          String
+  description    String?
+  categoryId     String
+  category       Category     @relation(fields: [categoryId], references: [id])
+  plannedAmount  Float
+  currency       String
+  plannedMethod  String
+  status         String       @default("BOZZA")
+  createdById    String
+  createdBy      User         @relation("BudgetCreatedBy", fields: [createdById], references: [id])
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  transactions Transaction[]
+
+  @@index([parishId, status])
+}
+
+model Attachment {
+  id            String       @id @default(uuid())
+  transactionId String?
+  transaction   Transaction? @relation(fields: [transactionId], references: [id])
+  filename      String
+  path          String
+  mimeType      String
+  size          Int
+  uploadedById  String
+  uploadedBy    User         @relation("AttachmentUploadedBy", fields: [uploadedById], references: [id])
+  createdAt     DateTime     @default(now())
+}
+
+model ExchangeRate {
+  id            String   @id @default(uuid())
+  parishId      String
+  parish        Parish   @relation(fields: [parishId], references: [id])
+  rateEurToAll  Float
+  effectiveDate DateTime @default(now())
+  createdById   String
+  createdBy     User     @relation("ExchangeRateCreatedBy", fields: [createdById], references: [id])
+  createdAt     DateTime @default(now())
+
+  @@index([parishId, effectiveDate])
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  parishId   String
+  parish     Parish   @relation(fields: [parishId], references: [id])
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  action     String
+  entityType String
+  entityId   String
+  oldValue   String?
+  newValue   String?
+  createdAt  DateTime @default(now())
+
+  @@index([parishId, entityType, entityId])
+  @@index([parishId, createdAt])
+}

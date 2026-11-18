@@ -37,7 +37,7 @@ def _model():
     try:
         from faster_whisper import WhisperModel
     except ImportError as exc:
-        raise TranscriptionUnavailable("faster-whisper is not installed in this container") from exc
+        raise TranscriptionUnavailable(f"faster-whisper could not be imported: {exc}") from exc
     device, compute = _device()
     log.info("loading whisper model", extra={"model": get_settings().whisper_model, "device": device, "compute": compute})
     try:

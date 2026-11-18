@@ -1,0 +1,18 @@
+# Optional overlay: give the worker the NVIDIA GPU (Docker Desktop + WSL2 + NVIDIA driver).
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+services:
+  worker:
+    build:
+      args:
+        INSTALL_CUDA: "1"
+    environment:
+      WHISPER_DEVICE: cuda
+      FFMPEG_HWACCEL: auto
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility,video
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
